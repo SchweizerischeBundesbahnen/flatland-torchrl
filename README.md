@@ -1,140 +1,77 @@
-# Flatland-MARL
-This is a multi-agent reinforcement learning solution to [Flatland3 challenge](https://www.aicrowd.com/challenges/flatland-3). The solution itself is elaborated on in our paper. 
+# Background
 
-> Jiang, Yuhao, Kunjie Zhang, Qimai Li, Jiaxin Chen, and Xiaolong Zhu. "[Multi-Agent Path Finding via Tree LSTM](https://arxiv.org/abs/2210.12933)." arXiv preprint arXiv:2210.12933 (2022).
+The code in this repo was developed as part of career starter data science project at SBB Cargo, with the aim of gaining a general understanding of reinforcement learning by engineering the training script for the paper "Multi-Agent Path Finding via Tree LSTM". Its main contributions are:
 
-# Install Dependencies
+* working training scripts for a TreeLSTM in flatland
+* adaption of the flatland environment for TorchRL, making training scripts easier to write
+* working prototype using tree-based transformers as introduced in this (https://www.microsoft.com/en-us/research/publication/novel-positional-encodings-to-enable-tree-based-transformers/) paper to process flatland observations
 
-### Clone the repository.
+# Sources and Credit
+
+Several people in SBB and the Flatland community gave valuable input to this project, notably my supervisor Philipp Germann, Adrian Egli and Matthias Minder from SBB and Jeremy Watson from Flatland. (Any bugs or errors are of course entirely mine (Emanuel Zwyssig)).
+
+The C-Utils observation generator and the LSTM network implementation stems from https://github.com/RoboEden/flatland-marl, which this is a fork of.
+
+# Installation
+
+The poetry set-up should take care of most things, including creating a new virtual environment (if you don't have poetry installed, see [here](https://python-poetry.org/docs/)). Installation needs to be done in WSL, as the c-utils cannot be installed otherwise. Clone the repository and initialize it by running
+
 ```shell
-$ git clone http://gitlab.parametrix.cn/parametrix/challenge/flatland-marl.git
-$ cd flatland-marl
+poetry install
 ```
 
-The code is tested with Python 3.7 and is expected to also work with higher versions of Python. If you are using conda, you can create a new environment with the following command (optional) :
+If the flatland installation didn't work directly, do it manually by running
+
 ```shell
-$ conda create -n flatland-marl python=3.7
-$ conda activate flatland-marl 
+poetry run pip install flatland-rl
 ```
 
-### Install flatland
-We found a bug in flatland environment that may lead to performance drop for RL solutions, so we cloned `flatland-rl-3.0.15` and fixed the bug. The bug-free one is provided in folder `flatland-rl/`. Please install this version of flatland.
+The installation of the C-utils obersvation generator does not work via poetry, therefore you have to run it manually with
+
 ```shell
-$ cd flatland-rl
-$ pip install .
-$ cd ..
+poetry run pip install ./flatland_cutils
 ```
 
-### Install other requirements
-```shell
-$ pip install -r requirements.txt
-```
+# Training
 
-### Build flatland_cutils
-`flatland_cutils` is a feature parsing package designed to substitute the built-in `flatland.envs.observations.TreeObsForRailEnv`. Our feature parser is developed in c++ language, which is much faster than the built-in `TreeObsForRailEnv`.
-```shell
-$ cd flatland_cutils
-$ pip install .
-$ cd ..
-```
+To train flatland, run flatland_ppo_training_torchrl.py. There are many ready-to-use run commands for different experiments in the /run_commands folder. There are many hyperparameters to chose from, most of which are standard for the algorithm used. Below are brief explanations of the most special cases.
 
-### For WSL2 users only
-The game rendering relies on `OpenGL`. If you are wsl2 user, it is very likely that you don't have OpenGL installed. Please install it.
-```shell
-$ sudo apt-get update
-$ sudo apt-get install freeglut3-dev
-```
+## Reward Structures
+
+In order to try different rewards and reproduce the curriculum learning used in the original paper, rewards are calculated as a linear combination of different components, the weight of each determined by a coefficient. Furthermore, rewards are determined in a curriculum-json file. For examples, see the /curriculums folder. 
+
+| Name                  | Definition                                                                                                                                                                                                                                              | Equivalent in Flatland TreeLSTM paper |
+|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| departure_reward      | Gives the defined reward once if the agent switches from off-map state to on-map state                                                                                                                                                                  | Departure reward                      |
+| arrival_reward        | Gives the defined reward once if the agent arrives at its destination on time.                                                                                                                                                                          | arrival reward                        |
+| delay_reward          | Once the train is allowed to depart, at each step give the minimal delay (if the agent were to follow the shortest path) it would have at the destination.                                                                                              | Environmental Reward                  |
+| shortest_path_reward  | Once the train is allowed to depart, at each step give the difference between travel time on the shortest path and available  time (positive if the train would arrive early on the shortest path, and equal to delay reward if it were to arrive late) | none                                  |
+| deadlock_penalty      | Gives the defined value as negative penalty for each agent newly in a deadlock.                                                                                                                                                                         | deadlock penalty                      |
+| arrival_delay_penalty | Equal in value to the delay reward, but only returned once upon the agents arrival at the destination or end of episode.                                                                                                                                | none                                  |
 
 
+Note that penalties are defined as negative rewards, i.e. a deadlock penalty of 2.5 will result in a reward of -2.5 upon deadlock. 
 
-# Usage
+## Hyperparameter Training
 
-## Quick demo
-Run our solution in random environments:
-```shell
-$ cd solution/
-$ python demo.py
-```
+The repo contains a script for hyperparameter optimization under /hyperparameter_searches.
 
-In a terminal without GUI, you may disable real-time rendering and save the replay as a video.
-```shell
-$ python demo.py --no-render --save-video replay.mp4
-```
+# Flatland in TorchRL
 
-## Test as Flatland3 challenge round 2
+The adaptions necessary for flatland to be used as a TorchRL environment are contained in the folder /flatland_torchrl and can be used as a stand-alone component.
 
-#### Generate test cases
-We provide a script to generate test cases with the same configuration as [Flatland3 challenge round 2](https://flatland.aicrowd.com/challenges/flatland3/envconfig.html). The generation may take several minutes.
-```shell
-$ cd solution/
-$ python debug-environments/generate_test_cases.py
-```
+# Model Comparisons
 
-#### Test in a specific case
-```shell
-$ python demo.py --env debug-environments/Test_3/Level_0.pkl
-```
+To compare different models to the pre-trained model from the original paper, the script torchrl_rollout_demo.py allows using both model architectures for a rollout (including the possibility to render the rollouts). 
 
-## Run the whole Flatland3 challenge round 2
+# Notes
 
-#### Install redis
-The Flatland3 challenge is evaluated in Client/Server architecture, which relies on redis. Please go to https://redis.io/docs/getting-started/ and follow the instructions to install redis.
+A couple of my notes are in notes.pdf. These are just my personal working notes, and I include them in case they might be useful to someone, whitout claim to completeness or correctness.
 
-#### Install ffmpeg
-We relies on ffmpeg to generate replay videos.
-```shell
-$ sudo apt-get install ffmpeg
-```
+# Future of this Repo/Expectations
 
-#### Start flatland-evaluator
-First, start redis-sever.
-```shell
-$ sudo service redis-server start
-```
+As this repo was developed during a limited-time project, it will not be maintained or further developed, and questions will be answered sporadically at best.
 
-Then start the flatland-evaluator server.
-```shell
-$ redis-cli flushall
-$ FLATLAND_OVERALL_TIMEOUT=999999 flatland-evaluator --tests ./debug-environments/ --shuffle False --disable_timeouts true
-```
+# License
 
-Open another terminal, and run our solution.
-```shell
-$ cd solution
-$ python remote_test.py --save-videos
-```
-Replays are saved in `solution/replay/`.
-
-
-<!-- 
-## Our results
-
-| Test Stage |     Model     | #agents | Map Size  | #cities| Arrival%| Normalized<br>Reward|
-|:----------:|:------------- | -------:|:---------:| ------:| -------:| -------------------:|
-|  Test_00   | Phase-III-50  |       7 |  30 x 30  |      2 |    94.3 |                .957 |
-|  Test_01   | Phase-III-50  |      10 |  30 x 30  |      2 |    92.0 |                .947 |
-|  Test_02   | Phase-III-50  |      20 |  30 x 30  |      3 |    87.0 |                .934 |
-|  Test_03   | Phase-III-50  |      50 |  30 x 35  |      3 |    86.2 |                .922 |
-|  Test_04   | Phase-III-80  |      80 |  35 x 30  |      5 |    62.6 |                .812 |
-|  Test_05   | Phase-III-80  |      80 |  45 x 35  |      7 |    62.9 |                .824 |
-|  Test_06   | Phase-III-80  |      80 |  40 x 60  |      9 |    70.6 |                .859 |
-|  Test_07   | Phase-III-80  |      80 |  60 x 40  |     13 |    65.4 |                .833 |
-|  Test_08   | Phase-III-80  |      80 |  60 x 60  |     17 |    74.3 |                .877 |
-|  Test_09   | Phase-III-100 |     100 |  80 x 120 |     21 |    59.7 |                .795 |
-|  Test_10   | Phase-III-100 |     100 | 100 x 80  |     25 |    57.6 |                .779 |
-|  Test_11   | Phase-III-200 |     200 | 100 x 100 |     29 |    52.8 |                .790 |
-|  Test_12   | Phase-III-200 |     200 | 150 x 150 |     33 |    57.3 |                .777 |
-|  Test_13   | Phase-III-200 |     400 | 150 x 150 |     37 |    34.9 |                .704 |
-|  Test_14   | Phase-III-200 |     425 | 158 x 158 |     41 |    39.3 |                .721 |
- -->
-
-# Bibtex
-If you use this repo in your research, please cite our paper.
-```bib
-@article{jiang2022multi,
-  title={Multi-Agent Path Finding via Tree LSTM},
-  author={Jiang, Yuhao and Zhang, Kunjie and Li, Qimai and Chen, Jiaxin and Zhu, Xiaolong},
-  journal={arXiv preprint arXiv:2210.12933},
-  year={2022}
-}
-```
+Code released under the MIT license.
